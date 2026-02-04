@@ -19,6 +19,10 @@ const PORTAL_URL = process.env.PORTAL_URL || "https://portal.sqd.dev";
 const DEFAULT_TIMEOUT = 30000;
 const DEFAULT_RETRIES = 3;
 
+// Result limits to prevent memory issues
+const MAX_RESULTS = 500;
+const MAX_RESPONSE_SIZE = 1000; // Max NDJSON lines to process
+
 const server = new McpServer({
 	name: "sqd-portal-mcp-server",
 	version: VERSION,
@@ -218,10 +222,13 @@ async function portalFetchStream(
 		}
 
 		const text = await response.text();
-		return text
-			.split("\n")
-			.filter((line) => line.trim())
-			.map((line) => JSON.parse(line));
+		const lines = text.split("\n").filter((line) => line.trim());
+		// Limit results to prevent memory issues
+		const limitedLines = lines.slice(0, MAX_RESPONSE_SIZE);
+		if (lines.length > MAX_RESPONSE_SIZE) {
+			console.error(`Warning: Response truncated from ${lines.length} to ${MAX_RESPONSE_SIZE} items`);
+		}
+		return limitedLines.map((line) => JSON.parse(line));
 	} catch (error) {
 		clearTimeout(timeoutId);
 		throw error;
@@ -1120,7 +1127,7 @@ server.tool(
 		topic1: z.array(z.string()).optional().describe("Topic1 filter"),
 		topic2: z.array(z.string()).optional().describe("Topic2 filter"),
 		topic3: z.array(z.string()).optional().describe("Topic3 filter"),
-		limit: z.number().optional().default(1000).describe("Max logs to return"),
+		limit: z.number().optional().default(100).describe("Max logs to return"),
 		include_transaction: z
 			.boolean()
 			.optional()
@@ -1240,7 +1247,7 @@ server.tool(
 			.describe("Function sighash filter (4-byte hex)"),
 		first_nonce: z.number().optional().describe("Minimum nonce"),
 		last_nonce: z.number().optional().describe("Maximum nonce"),
-		limit: z.number().optional().default(1000).describe("Max transactions"),
+		limit: z.number().optional().default(100).describe("Max transactions"),
 		include_logs: z
 			.boolean()
 			.optional()
@@ -1382,7 +1389,7 @@ server.tool(
 			.array(z.string())
 			.optional()
 			.describe("Reward author addresses"),
-		limit: z.number().optional().default(1000).describe("Max traces"),
+		limit: z.number().optional().default(100).describe("Max traces"),
 	},
 	async ({
 		dataset,
@@ -1477,7 +1484,7 @@ server.tool(
 			.describe(
 				"Diff kinds: = (exists/no change), + (created), * (modified), - (deleted)",
 			),
-		limit: z.number().optional().default(1000).describe("Max state diffs"),
+		limit: z.number().optional().default(100).describe("Max state diffs"),
 	},
 	async ({
 		dataset,
@@ -1555,7 +1562,7 @@ server.tool(
 			.array(z.string())
 			.optional()
 			.describe("Recipient addresses"),
-		limit: z.number().optional().default(1000).describe("Max transfers"),
+		limit: z.number().optional().default(100).describe("Max transfers"),
 	},
 	async ({
 		dataset,
@@ -1664,7 +1671,7 @@ server.tool(
 			.optional()
 			.default("both")
 			.describe("Token standard"),
-		limit: z.number().optional().default(1000).describe("Max transfers"),
+		limit: z.number().optional().default(100).describe("Max transfers"),
 	},
 	async ({
 		dataset,
@@ -1837,7 +1844,7 @@ server.tool(
 			.array(z.string())
 			.optional()
 			.describe("Fee payer filter"),
-		limit: z.number().optional().default(1000).describe("Max instructions"),
+		limit: z.number().optional().default(100).describe("Max instructions"),
 		include_transaction: z
 			.boolean()
 			.optional()
@@ -2020,7 +2027,7 @@ server.tool(
 			.array(z.string())
 			.optional()
 			.describe("Account addresses to filter"),
-		limit: z.number().optional().default(1000).describe("Max balance changes"),
+		limit: z.number().optional().default(100).describe("Max balance changes"),
 	},
 	async ({ dataset, from_block, to_block, finalized_only, account, limit }) => {
 		await validateDataset(dataset);
@@ -2181,7 +2188,7 @@ server.tool(
 			.array(z.enum(["log", "data", "other"]))
 			.optional()
 			.describe("Log kinds"),
-		limit: z.number().optional().default(1000).describe("Max logs"),
+		limit: z.number().optional().default(100).describe("Max logs"),
 	},
 	async ({
 		dataset,
@@ -2250,7 +2257,7 @@ server.tool(
 			.default(false)
 			.describe("Only query finalized slots"),
 		pubkey: z.array(z.string()).optional().describe("Reward recipient pubkeys"),
-		limit: z.number().optional().default(1000).describe("Max rewards"),
+		limit: z.number().optional().default(100).describe("Max rewards"),
 	},
 	async ({ dataset, from_block, to_block, finalized_only, pubkey, limit }) => {
 		await validateDataset(dataset);
