@@ -2,3 +2,34 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Generated files
+demo-report.html
+*.html
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+
+# Cloudflare deployment
+wrangler.toml
+.wrangler/
+.dev.vars
+
+# Test coverage
+coverage/
+
+# npm
+*.tgz
+.npmrc
