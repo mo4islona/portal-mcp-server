@@ -65,41 +65,42 @@ export interface QueryValidationResult {
 const RECOMMENDED_RANGES = {
   logs: {
     filtered: 10000, // <1s
-    unfiltered: 500, // Avoid crashes
+    unfiltered: 100, // Avoid crashes - reduced from 500
   },
   transactions: {
     filtered: 5000, // <1s
-    unfiltered: 500, // Avoid crashes
+    unfiltered: 100, // Avoid crashes - reduced from 500
   },
   traces: {
     filtered: 1000, // Traces are expensive
-    unfiltered: 100, // Very expensive
+    unfiltered: 50, // Very expensive - reduced from 100
   },
   state_diffs: {
     filtered: 5000,
-    unfiltered: 1000,
+    unfiltered: 100, // Reduced from 1000
   },
 };
 
 /**
  * Absolute maximum ranges before we reject the query to prevent crashes
+ * These are HARD LIMITS - queries exceeding these will be rejected
  */
 const MAXIMUM_RANGES = {
   logs: {
-    filtered: 100000,
-    unfiltered: 1000, // Hard limit to prevent Node.js string length crash
+    filtered: 50000, // Reduced from 100k to prevent memory issues
+    unfiltered: 500, // Reduced from 1000 - hard limit to prevent Node.js crash
   },
   transactions: {
-    filtered: 50000,
-    unfiltered: 1000, // Hard limit to prevent Node.js string length crash
+    filtered: 20000, // Reduced from 50k to prevent memory issues
+    unfiltered: 500, // Reduced from 1000 - hard limit to prevent Node.js crash
   },
   traces: {
-    filtered: 10000,
-    unfiltered: 500,
+    filtered: 5000, // Reduced from 10k - traces are very expensive
+    unfiltered: 100, // Reduced from 500
   },
   state_diffs: {
-    filtered: 50000,
-    unfiltered: 5000,
+    filtered: 20000, // Reduced from 50k
+    unfiltered: 1000, // Reduced from 5000
   },
 };
 

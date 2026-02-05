@@ -6,7 +6,7 @@ import { detectChainType } from "../../helpers/chain.js";
 import { portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
 import { buildEvmStateDiffFields } from "../../helpers/fields.js";
-import { normalizeAddresses } from "../../helpers/validation.js";
+import { normalizeAddresses, validateQuerySize } from "../../helpers/validation.js";
 
 // ============================================================================
 // Tool: Query State Diffs (EVM)
@@ -65,6 +65,20 @@ export function registerQueryStateDiffsTool(server: McpServer) {
         to_block ?? Number.MAX_SAFE_INTEGER,
         finalized_only,
       );
+
+      // Validate query size to prevent memory crashes
+      const blockRange = endBlock - from_block;
+      const hasFilters = !!(addresses || key || kind);
+      const validation = validateQuerySize({
+        blockRange,
+        hasFilters,
+        queryType: "state_diffs",
+        limit,
+      });
+
+      if (!validation.valid && validation.error) {
+        throw new Error(validation.error);
+      }
 
       const diffFilter: Record<string, unknown> = {};
       if (normalizedAddresses) diffFilter.address = normalizedAddresses;

@@ -6,7 +6,7 @@ import { detectChainType } from "../../helpers/chain.js";
 import { portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
 import { buildEvmTraceFields } from "../../helpers/fields.js";
-import { normalizeAddresses } from "../../helpers/validation.js";
+import { normalizeAddresses, validateQuerySize } from "../../helpers/validation.js";
 
 // ============================================================================
 // Tool: Query Traces (EVM)
@@ -114,6 +114,20 @@ CORRECT PARAMETERS BY TYPE:
         to_block ?? Number.MAX_SAFE_INTEGER,
         finalized_only,
       );
+
+      // Validate query size to prevent memory crashes
+      const blockRange = endBlock - from_block;
+      const hasFilters = !!(type || create_from || call_from || call_to || call_sighash || suicide_refund_address || reward_author);
+      const validation = validateQuerySize({
+        blockRange,
+        hasFilters,
+        queryType: "traces",
+        limit,
+      });
+
+      if (!validation.valid && validation.error) {
+        throw new Error(validation.error);
+      }
 
       const traceFilter: Record<string, unknown> = {};
       if (type) traceFilter.type = type;
