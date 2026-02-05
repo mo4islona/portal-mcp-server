@@ -36,6 +36,7 @@ import {
   registerGetRecentTransactionsTool,
   registerGetWalletSummaryTool,
   registerGetContractActivityTool,
+  registerGetTransactionDensityTool,
 } from "./convenience/index.js";
 
 // ============================================================================
@@ -74,8 +75,9 @@ export function registerAllTools(server: McpServer) {
   registerGetAddressActivityTool(server);
   registerGetTokenTransfersForAddressTool(server);
 
-  // Convenience tools (3) - High-level wrappers for common tasks
+  // Convenience tools (4) - High-level wrappers for common tasks
   registerGetRecentTransactionsTool(server);
   registerGetWalletSummaryTool(server);
   registerGetContractActivityTool(server);
+  registerGetTransactionDensityTool(server);
 }
