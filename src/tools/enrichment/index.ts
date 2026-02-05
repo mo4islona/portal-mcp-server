@@ -6,3 +6,7 @@ export {
   registerGetYieldPoolsTool,
   registerGetProtocolFeesTool,
 } from "./defi-data.js";
+export {
+  registerGetSqdNetworkInfoTool,
+  registerGetPortalCapabilitiesTool,
+} from "./sqd-network.js";

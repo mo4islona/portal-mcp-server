@@ -1,0 +1,160 @@
+import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { PORTAL_URL } from "../../constants/index.js";
+import { resolveDataset, getBlockHead } from "../../cache/datasets.js";
+import { detectChainType } from "../../helpers/chain.js";
+import { portalFetchStream } from "../../helpers/fetch.js";
+import { formatResult } from "../../helpers/format.js";
+
+// ============================================================================
+// Tool: Get Top Contracts
+// ============================================================================
+
+/**
+ * Find the most active contracts on a chain by transaction volume.
+ * Perfect for "which contracts are trending?" questions.
+ */
+export function registerGetTopContractsTool(server: McpServer) {
+  server.tool(
+    "portal_get_top_contracts",
+    `Find the most active contracts on a chain by transaction volume. Perfect for trend analysis.
+
+WHEN TO USE:
+- "Which contracts are most active on Base?"
+- "Show me the top 10 contracts by transaction volume"
+- "What contracts are getting the most usage?"
+- "Find trending contracts on this chain"
+- "Which DEXes have the most activity?"
+
+ONE CALL SOLUTION: Analyzes all transactions and ranks contracts by usage.
+
+EXAMPLES:
+- Top 10 in last 1000 blocks: { dataset: "base", num_blocks: 1000, limit: 10 }
+- Top contracts today: { dataset: "ethereum", num_blocks: 7200, limit: 20 }
+- Activity analysis: { dataset: "polygon", num_blocks: 5000, include_details: true }
+
+FAST: Returns ranked list with transaction counts, percentages, and optional details.`,
+    {
+      dataset: z.string().describe("Dataset name (supports short names: 'ethereum', 'polygon', 'base', etc.)"),
+      num_blocks: z
+        .number()
+        .max(10000)
+        .optional()
+        .default(1000)
+        .describe("Number of recent blocks to analyze (default: 1000, max: 10000 for performance)"),
+      limit: z
+        .number()
+        .max(100)
+        .optional()
+        .default(10)
+        .describe("Number of top contracts to return (default: 10, max: 100)"),
+      include_details: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Include sample transaction hashes for each contract"),
+    },
+    async ({ dataset, num_blocks, limit, include_details }) => {
+      const queryStartTime = Date.now();
+      dataset = await resolveDataset(dataset);
+      const chainType = detectChainType(dataset);
+
+      if (chainType !== "evm") {
+        throw new Error("portal_get_top_contracts is only for EVM chains");
+      }
+
+      // Get latest block
+      const head = await getBlockHead(dataset);
+      const latestBlock = head.number;
+      const fromBlock = Math.max(0, latestBlock - num_blocks + 1);
+
+      // Query transactions
+      const query = {
+        type: "evm",
+        fromBlock,
+        toBlock: latestBlock,
+        fields: {
+          block: { number: true },
+          transaction: {
+            to: true,
+            hash: true,
+          },
+        },
+        transactions: [{}], // Get all transactions
+      };
+
+      const results = await portalFetchStream(
+        `${PORTAL_URL}/datasets/${dataset}/stream`,
+        query,
+      );
+
+      // Count transactions per contract
+      const contractCounts: Map<string, { count: number; samples: string[] }> = new Map();
+      let totalTxs = 0;
+
+      results.forEach((block: any) => {
+        block.transactions?.forEach((tx: any) => {
+          if (tx.to) {
+            // Only count contract calls (to != null)
+            const address = tx.to.toLowerCase();
+            totalTxs++;
+
+            if (!contractCounts.has(address)) {
+              contractCounts.set(address, { count: 0, samples: [] });
+            }
+
+            const entry = contractCounts.get(address)!;
+            entry.count++;
+
+            // Store sample transaction hashes (up to 5)
+            if (include_details && entry.samples.length < 5) {
+              entry.samples.push(tx.hash);
+            }
+          }
+        });
+      });
+
+      // Convert to array and sort by transaction count
+      const sortedContracts = Array.from(contractCounts.entries())
+        .map(([address, data]) => ({
+          address,
+          transaction_count: data.count,
+          percentage: ((data.count / totalTxs) * 100).toFixed(2),
+          sample_transactions: include_details ? data.samples : undefined,
+        }))
+        .sort((a, b) => b.transaction_count - a.transaction_count)
+        .slice(0, limit);
+
+      // Add rank
+      sortedContracts.forEach((contract, index) => {
+        (contract as any).rank = index + 1;
+      });
+
+      const summary = {
+        total_transactions: totalTxs,
+        unique_contracts: contractCounts.size,
+        blocks_analyzed: results.length,
+        from_block: fromBlock,
+        to_block: latestBlock,
+        top_contract: sortedContracts[0]?.address,
+        top_contract_txs: sortedContracts[0]?.transaction_count,
+      };
+
+      return formatResult(
+        {
+          summary,
+          top_contracts: sortedContracts,
+        },
+        `Analyzed ${totalTxs.toLocaleString()} transactions across ${results.length} blocks. Top contract: ${sortedContracts[0]?.address} (${sortedContracts[0]?.transaction_count} txs, ${sortedContracts[0]?.percentage}%)`,
+        {
+          metadata: {
+            dataset,
+            from_block: fromBlock,
+            to_block: latestBlock,
+            query_start_time: queryStartTime,
+          },
+        },
+      );
+    },
+  );
+}

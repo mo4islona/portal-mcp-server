@@ -53,6 +53,8 @@ import {
   registerGetChainTvlTool,
   registerGetYieldPoolsTool,
   registerGetProtocolFeesTool,
+  registerGetSqdNetworkInfoTool,
+  registerGetPortalCapabilitiesTool,
 } from "./enrichment/index.js";
 
 // ============================================================================
@@ -103,11 +105,13 @@ export function registerAllTools(server: McpServer) {
   registerGetTimeSeriesDataTool(server);
   registerGetContractDeploymentsTool(server);
 
-  // Enrichment tools (6) - External data sources for rich metadata
+  // Enrichment tools (8) - External data sources for rich metadata
   registerGetTokenInfoTool(server);
   registerGetDefiProtocolTool(server);
   registerGetProtocolsByChainTool(server);
   registerGetChainTvlTool(server);
   registerGetYieldPoolsTool(server);
   registerGetProtocolFeesTool(server);
+  registerGetSqdNetworkInfoTool(server);
+  registerGetPortalCapabilitiesTool(server);
 }
