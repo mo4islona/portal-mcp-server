@@ -4,6 +4,7 @@ import {
 } from "../constants/index.js";
 import type { Dataset, DatasetMetadata, BlockHead } from "../types/index.js";
 import { portalFetch } from "../helpers/fetch.js";
+import { createDatasetError, createBlockRangeError } from "../helpers/errors.js";
 
 // ============================================================================
 // Dataset Cache & Request Deduplication
@@ -102,22 +103,8 @@ export async function resolveDataset(dataset: string): Promise<string> {
     return preferredMatch.dataset;
   }
 
-  // No match found - provide suggestions
-  const suggestions = datasets
-    .filter(
-      (d) =>
-        d.dataset.toLowerCase().includes(lowerDataset) ||
-        lowerDataset.includes(d.dataset.split("-")[0].toLowerCase()),
-    )
-    .slice(0, 5)
-    .map((d) => d.dataset);
-
-  let errorMsg = `Unknown dataset: "${dataset}".`;
-  if (suggestions.length > 0) {
-    errorMsg += ` Did you mean: ${suggestions.join(", ")}?`;
-  }
-  errorMsg += " Use portal_list_datasets to see available datasets.";
-  throw new Error(errorMsg);
+  // No match found
+  throw createDatasetError(dataset, datasets.length);
 }
 
 export async function validateDataset(dataset: string): Promise<void> {
@@ -183,8 +170,10 @@ export async function validateBlockRange(
   const meta = await getDatasetMetadata(dataset);
 
   if (fromBlock < meta.start_block) {
-    throw new Error(
-      `fromBlock (${fromBlock}) is before dataset start block (${meta.start_block})`,
+    throw createBlockRangeError(
+      fromBlock,
+      toBlock,
+      `fromBlock (${fromBlock.toLocaleString()}) is before dataset start block (${meta.start_block.toLocaleString()})`,
     );
   }
 
@@ -194,8 +183,18 @@ export async function validateBlockRange(
       : meta.head.number;
 
   if (fromBlock > maxBlock) {
-    throw new Error(
-      `fromBlock (${fromBlock}) is beyond ${finalizedOnly ? "finalized" : "latest"} block (${maxBlock})`,
+    throw createBlockRangeError(
+      fromBlock,
+      toBlock,
+      `fromBlock (${fromBlock.toLocaleString()}) is beyond ${finalizedOnly ? "finalized" : "latest"} block (${maxBlock.toLocaleString()})`,
+    );
+  }
+
+  if (toBlock < fromBlock) {
+    throw createBlockRangeError(
+      fromBlock,
+      toBlock,
+      "toBlock must be >= fromBlock",
     );
   }
 

@@ -3,6 +3,11 @@ import {
   DEFAULT_RETRIES,
   STREAM_TIMEOUT,
 } from "../constants/index.js";
+import {
+  parsePortalError,
+  createTimeoutError,
+  wrapError,
+} from "./errors.js";
 
 // ============================================================================
 // Portal API Wrapper Functions
@@ -95,13 +100,19 @@ export async function portalFetch<T>(
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        throw parsePortalError(response.status, errorText, { url, query: body });
       }
 
       return (await response.json()) as T;
     } catch (error) {
       clearTimeout(timeoutId);
-      lastError = error as Error;
+
+      // Check for timeout/abort
+      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("abort"))) {
+        throw createTimeoutError(timeout, { url, attempt: attempt + 1, max_attempts: retries + 1 });
+      }
+
+      lastError = wrapError(error, { url, attempt: attempt + 1, max_attempts: retries + 1 }) as Error;
 
       // Don't retry on client errors (except 409/429 handled above)
       if (lastError.message.includes("HTTP 4")) {
@@ -159,7 +170,7 @@ export async function portalFetchStream(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+      throw parsePortalError(response.status, errorText, { url, query: body });
     }
 
     const text = await response.text();
@@ -169,6 +180,12 @@ export async function portalFetchStream(
       .map((line) => JSON.parse(line));
   } catch (error) {
     clearTimeout(timeoutId);
-    throw error;
+
+    // Check for timeout/abort
+    if (error instanceof Error && (error.name === "AbortError" || error.message.includes("abort"))) {
+      throw createTimeoutError(timeout, { url, query: body });
+    }
+
+    throw wrapError(error, { url, query: body });
   }
 }
