@@ -5,7 +5,8 @@
 export const VERSION = "0.5.0";
 
 // Environment configuration
-export const PORTAL_URL = process.env.PORTAL_URL || "https://portal.sqd.dev";
+// Note: In Cloudflare Workers, env vars come from wrangler.toml or env parameter
+export const PORTAL_URL = "https://portal.sqd.dev";
 export const DEFAULT_TIMEOUT = 10000; // 10s for regular fetch (Portal API is fast, avg 200ms)
 export const STREAM_TIMEOUT = 15000; // 15s for streaming queries (was 60s, but API responds in <5s for reasonable queries)
 export const DEFAULT_RETRIES = 2; // Reduced from 3 - fail faster
