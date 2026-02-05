@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { VERSION, PORTAL_URL, EVENT_SIGNATURES } from "../constants/index.js";
 import type { DatasetMetadata, BlockHead } from "../types/index.js";
-import { getDatasets, validateDataset } from "../cache/datasets.js";
+import { getDatasets, resolveDataset } from "../cache/datasets.js";
 import { portalFetch } from "../helpers/fetch.js";
 import {
   buildEvmBlockFields,
@@ -42,8 +42,8 @@ export function registerSchemaResource(server: McpServer) {
     "dataset-info",
     new ResourceTemplate("sqd://datasets/{name}", { list: undefined }),
     async (uri, { name }) => {
-      const datasetName = Array.isArray(name) ? name[0] : name;
-      await validateDataset(datasetName);
+      let datasetName = Array.isArray(name) ? name[0] : name;
+      datasetName = await resolveDataset(datasetName);
       const metadata = await portalFetch<DatasetMetadata>(
         `${PORTAL_URL}/datasets/${datasetName}/metadata`,
       );

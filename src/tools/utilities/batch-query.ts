@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL } from "../../constants/index.js";
 import {
-  validateDataset,
+  resolveDataset,
   getDatasetMetadata,
   validateBlockRange,
 } from "../../cache/datasets.js";
@@ -68,7 +68,7 @@ export function registerBatchQueryTool(server: McpServer) {
       finalized_only,
     }) => {
       // Validate all datasets first
-      await Promise.all(datasets.map((d) => validateDataset(d)));
+      await Promise.all(datasets.map((d) => resolveDataset(d)));
 
       // Filter to only EVM datasets for these query types
       const evmDatasets = datasets.filter((d) => detectChainType(d) === "evm");

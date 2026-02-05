@@ -21,28 +21,67 @@ export async function getDatasets(): Promise<Dataset[]> {
   return data;
 }
 
-export async function validateDataset(dataset: string): Promise<void> {
+/**
+ * Resolve a dataset name or alias to the canonical dataset name.
+ * Supports fuzzy matching for common shortcuts like "polygon" -> "polygon-mainnet"
+ */
+export async function resolveDataset(dataset: string): Promise<string> {
   const datasets = await getDatasets();
-  const found = datasets.some(
+
+  // Exact match
+  const exactMatch = datasets.find(
     (d) => d.dataset === dataset || d.aliases.includes(dataset),
   );
-  if (!found) {
-    const suggestions = datasets
-      .filter(
-        (d) =>
-          d.dataset.toLowerCase().includes(dataset.toLowerCase()) ||
-          dataset.toLowerCase().includes(d.dataset.split("-")[0].toLowerCase()),
-      )
-      .slice(0, 5)
-      .map((d) => d.dataset);
-
-    let errorMsg = `Unknown dataset: "${dataset}".`;
-    if (suggestions.length > 0) {
-      errorMsg += ` Did you mean: ${suggestions.join(", ")}?`;
-    }
-    errorMsg += " Use portal_list_datasets to see available datasets.";
-    throw new Error(errorMsg);
+  if (exactMatch) {
+    return exactMatch.dataset;
   }
+
+  // Fuzzy match: prefer mainnet if user provides just the chain name
+  const lowerDataset = dataset.toLowerCase();
+
+  // Try "{name}-mainnet" first
+  const mainnetMatch = datasets.find(
+    (d) => d.dataset === `${lowerDataset}-mainnet`
+  );
+  if (mainnetMatch) {
+    return mainnetMatch.dataset;
+  }
+
+  // Try partial match on dataset name
+  const partialMatches = datasets.filter(
+    (d) =>
+      d.dataset.toLowerCase().startsWith(lowerDataset) ||
+      d.dataset.toLowerCase().includes(`-${lowerDataset}-`) ||
+      (lowerDataset.includes("-") && d.dataset.toLowerCase().includes(lowerDataset))
+  );
+
+  // If multiple matches, prefer mainnet
+  if (partialMatches.length > 0) {
+    const preferredMatch = partialMatches.find((d) => d.dataset.includes("-mainnet")) || partialMatches[0];
+    return preferredMatch.dataset;
+  }
+
+  // No match found - provide suggestions
+  const suggestions = datasets
+    .filter(
+      (d) =>
+        d.dataset.toLowerCase().includes(lowerDataset) ||
+        lowerDataset.includes(d.dataset.split("-")[0].toLowerCase()),
+    )
+    .slice(0, 5)
+    .map((d) => d.dataset);
+
+  let errorMsg = `Unknown dataset: "${dataset}".`;
+  if (suggestions.length > 0) {
+    errorMsg += ` Did you mean: ${suggestions.join(", ")}?`;
+  }
+  errorMsg += " Use portal_list_datasets to see available datasets.";
+  throw new Error(errorMsg);
+}
+
+export async function validateDataset(dataset: string): Promise<void> {
+  // Just call resolveDataset and ignore the result - will throw if invalid
+  await resolveDataset(dataset);
 }
 
 export async function getDatasetMetadata(dataset: string): Promise<{

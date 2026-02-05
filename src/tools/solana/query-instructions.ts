@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL } from "../../constants/index.js";
-import { validateDataset, validateBlockRange } from "../../cache/datasets.js";
+import { resolveDataset, validateBlockRange } from "../../cache/datasets.js";
 import { detectChainType } from "../../helpers/chain.js";
 import { portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
@@ -141,7 +141,7 @@ export function registerQuerySolanaInstructionsTool(server: McpServer) {
       include_inner_instructions,
       include_logs,
     }) => {
-      await validateDataset(dataset);
+      dataset = await resolveDataset(dataset);
       const chainType = detectChainType(dataset);
 
       if (chainType !== "solana") {

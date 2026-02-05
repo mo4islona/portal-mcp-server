@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL } from "../../constants/index.js";
 import type { BlockHead } from "../../types/index.js";
-import { validateDataset } from "../../cache/datasets.js";
+import { resolveDataset } from "../../cache/datasets.js";
 import { portalFetch, portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
 
@@ -43,7 +43,7 @@ export function registerQueryPaginatedTool(server: McpServer) {
         .describe("Number of blocks per page"),
     },
     async ({ dataset, query, cursor, page_size }) => {
-      await validateDataset(dataset);
+      dataset = await resolveDataset(dataset);
 
       const head = await portalFetch<BlockHead>(
         `${PORTAL_URL}/datasets/${dataset}/head`,

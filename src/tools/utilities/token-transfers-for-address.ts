@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL, EVENT_SIGNATURES } from "../../constants/index.js";
-import { validateDataset, validateBlockRange } from "../../cache/datasets.js";
+import { resolveDataset, validateBlockRange } from "../../cache/datasets.js";
 import { detectChainType } from "../../helpers/chain.js";
 import { portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
@@ -54,7 +54,7 @@ export function registerGetTokenTransfersForAddressTool(server: McpServer) {
       finalized_only,
     }) => {
       const queryStartTime = Date.now();
-      await validateDataset(dataset);
+      dataset = await resolveDataset(dataset);
       const chainType = detectChainType(dataset);
 
       if (chainType !== "evm") {

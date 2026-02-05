@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL } from "../../constants/index.js";
 import type { BlockHead } from "../../types/index.js";
-import { validateDataset } from "../../cache/datasets.js";
+import { resolveDataset } from "../../cache/datasets.js";
 import { detectChainType } from "../../helpers/chain.js";
 import { portalFetch, portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
@@ -20,7 +20,7 @@ export function registerBlockAtTimestampTool(server: McpServer) {
       timestamp: z.number().describe("Unix timestamp in seconds"),
     },
     async ({ dataset, timestamp }) => {
-      await validateDataset(dataset);
+      dataset = await resolveDataset(dataset);
       const chainType = detectChainType(dataset);
 
       if (chainType !== "evm") {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL } from "../../constants/index.js";
-import { validateDataset } from "../../cache/datasets.js";
+import { resolveDataset } from "../../cache/datasets.js";
 import { portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
 
@@ -38,7 +38,7 @@ export function registerStreamTool(server: McpServer) {
         .describe("Request timeout in milliseconds"),
     },
     async ({ dataset, query, timeout_ms }) => {
-      await validateDataset(dataset);
+      dataset = await resolveDataset(dataset);
 
       const results = await portalFetchStream(
         `${PORTAL_URL}/datasets/${dataset}/stream`,
