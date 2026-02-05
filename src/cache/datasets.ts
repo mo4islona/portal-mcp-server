@@ -6,19 +6,41 @@ import type { Dataset, DatasetMetadata, BlockHead } from "../types/index.js";
 import { portalFetch } from "../helpers/fetch.js";
 
 // ============================================================================
-// Dataset Cache
+// Dataset Cache & Request Deduplication
 // ============================================================================
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const HEAD_CACHE_TTL = 30 * 1000; // 30 seconds (blocks change every 2-12s)
+
 let datasetsCache: { data: Dataset[]; timestamp: number } | null = null;
+let headCache = new Map<string, { head: BlockHead; timestamp: number }>();
+let metadataCache = new Map<string, { data: { start_block: number; head: BlockHead; finalized_head?: BlockHead }; timestamp: number }>();
+
+// Request deduplication: prevent concurrent requests for same resource
+const pendingRequests = new Map<string, Promise<any>>();
+
+/**
+ * Deduplicate concurrent requests to the same resource.
+ * Multiple callers get the same Promise, avoiding duplicate API calls.
+ */
+function dedupe<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  if (!pendingRequests.has(key)) {
+    const promise = fn().finally(() => pendingRequests.delete(key));
+    pendingRequests.set(key, promise);
+  }
+  return pendingRequests.get(key) as Promise<T>;
+}
 
 export async function getDatasets(): Promise<Dataset[]> {
   if (datasetsCache && Date.now() - datasetsCache.timestamp < CACHE_TTL) {
     return datasetsCache.data;
   }
-  const data = await portalFetch<Dataset[]>(`${PORTAL_URL}/datasets`);
-  datasetsCache = { data, timestamp: Date.now() };
-  return data;
+
+  return dedupe('datasets', async () => {
+    const data = await portalFetch<Dataset[]>(`${PORTAL_URL}/datasets`);
+    datasetsCache = { data, timestamp: Date.now() };
+    return data;
+  });
 }
 
 /**
@@ -84,23 +106,53 @@ export async function validateDataset(dataset: string): Promise<void> {
   await resolveDataset(dataset);
 }
 
+/**
+ * Get block head with caching (30s TTL).
+ * Blocks are produced every 2-12s depending on chain, so 30s cache is safe.
+ */
+export async function getBlockHead(dataset: string, finalized = false): Promise<BlockHead> {
+  const cacheKey = `${dataset}:${finalized ? 'finalized' : 'head'}`;
+  const cached = headCache.get(cacheKey);
+
+  if (cached && Date.now() - cached.timestamp < HEAD_CACHE_TTL) {
+    return cached.head;
+  }
+
+  return dedupe(cacheKey, async () => {
+    const endpoint = finalized ? 'finalized-head' : 'head';
+    const head = await portalFetch<BlockHead>(`${PORTAL_URL}/datasets/${dataset}/${endpoint}`);
+    headCache.set(cacheKey, { head, timestamp: Date.now() });
+    return head;
+  });
+}
+
 export async function getDatasetMetadata(dataset: string): Promise<{
   start_block: number;
   head: BlockHead;
   finalized_head?: BlockHead;
 }> {
-  const [metadata, head, finalizedHead] = await Promise.all([
-    portalFetch<DatasetMetadata>(`${PORTAL_URL}/datasets/${dataset}/metadata`),
-    portalFetch<BlockHead>(`${PORTAL_URL}/datasets/${dataset}/head`),
-    portalFetch<BlockHead>(
-      `${PORTAL_URL}/datasets/${dataset}/finalized-head`,
-    ).catch(() => undefined),
-  ]);
-  return {
-    start_block: metadata.start_block,
-    head,
-    finalized_head: finalizedHead,
-  };
+  // Check cache first (30s TTL for metadata too)
+  const cached = metadataCache.get(dataset);
+  if (cached && Date.now() - cached.timestamp < HEAD_CACHE_TTL) {
+    return cached.data;
+  }
+
+  return dedupe(`metadata:${dataset}`, async () => {
+    const [metadata, head, finalizedHead] = await Promise.all([
+      portalFetch<DatasetMetadata>(`${PORTAL_URL}/datasets/${dataset}/metadata`),
+      getBlockHead(dataset, false),
+      getBlockHead(dataset, true).catch(() => undefined),
+    ]);
+
+    const result = {
+      start_block: metadata.start_block,
+      head,
+      finalized_head: finalizedHead,
+    };
+
+    metadataCache.set(dataset, { data: result, timestamp: Date.now() });
+    return result;
+  });
 }
 
 export async function validateBlockRange(

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL, EVENT_SIGNATURES } from "../../constants/index.js";
-import { resolveDataset } from "../../cache/datasets.js";
+import { resolveDataset, getBlockHead } from "../../cache/datasets.js";
 import { detectChainType, isL2Chain } from "../../helpers/chain.js";
 import { portalFetch, portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
@@ -27,7 +27,23 @@ import type { BlockHead } from "../../types/index.js";
 export function registerGetWalletSummaryTool(server: McpServer) {
   server.tool(
     "portal_get_wallet_summary",
-    "Get comprehensive wallet activity in one call. Returns transactions, token transfers, and NFT activity for the specified timeframe. Perfect for wallet dashboards, activity feeds, or quick wallet analysis.",
+    `Get complete wallet activity in ONE call. Returns transactions + token transfers + NFTs together.
+
+WHEN TO USE (THIS IS THE BEST TOOL FOR):
+- "What has this wallet been doing?"
+- "Show me all activity for address 0x123..."
+- "Wallet dashboard for this address"
+- "Is this address active? What tokens did it receive?"
+
+ONE CALL = ALL DATA: No need to call multiple tools. Just specify address + timeframe.
+
+EXAMPLES:
+- Recent activity: { address: "0x123...", dataset: "polygon", timeframe: "24h" }
+- Full picture: { address: "0x456...", dataset: "ethereum", timeframe: "7d", include_nfts: true }
+
+DEFAULT: Returns transactions + token transfers. Set include_nfts: true for NFTs.
+
+SEE ALSO: portal_get_recent_transactions, portal_get_erc20_transfers, portal_get_nft_transfers`,
     {
       dataset: z.string().describe("Dataset name or alias"),
       address: z.string().describe("Wallet address to analyze"),
@@ -72,10 +88,8 @@ export function registerGetWalletSummaryTool(server: McpServer) {
 
       const normalizedAddress = normalizeEvmAddress(address);
 
-      // Get latest block
-      const head = await portalFetch<BlockHead>(
-        `${PORTAL_URL}/datasets/${dataset}/head`,
-      );
+      // Get latest block (cached for 30s)
+      const head = await getBlockHead(dataset);
       const latestBlock = head.number;
 
       // Calculate block range

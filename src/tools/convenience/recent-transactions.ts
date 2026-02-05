@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL } from "../../constants/index.js";
-import { resolveDataset } from "../../cache/datasets.js";
+import { resolveDataset, getBlockHead } from "../../cache/datasets.js";
 import { detectChainType, isL2Chain } from "../../helpers/chain.js";
 import { portalFetch, portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
@@ -27,15 +27,30 @@ import type { BlockHead } from "../../types/index.js";
 export function registerGetRecentTransactionsTool(server: McpServer) {
   server.tool(
     "portal_get_recent_transactions",
-    "Get recent transactions without manual block calculation. Automatically queries the last N blocks or timeframe. Perfect for monitoring recent activity, latest transfers, or checking if a wallet is active.",
+    `Get recent transactions without manual block calculation. Automatically queries the last N blocks or timeframe.
+
+WHEN TO USE:
+- "Show me the last 50 transactions on Polygon"
+- "What's the recent activity on this address?"
+- "Is this wallet still active?"
+- "Get latest transactions from/to specific addresses"
+
+FAST & SIMPLE: Just specify dataset + timeframe. No block numbers needed.
+
+EXAMPLES:
+- Recent activity: { dataset: "polygon", timeframe: "100", limit: 20 }
+- Track wallet: { dataset: "base", from_addresses: ["0x123..."], timeframe: "1h" }
+- Monitor recipient: { dataset: "ethereum", to_addresses: ["0xUSDC..."], timeframe: "24h" }
+
+SEE ALSO: portal_query_transactions (more filters), portal_get_wallet_summary (includes tokens)`,
     {
-      dataset: z.string().describe("Dataset name or alias"),
+      dataset: z.string().describe("Dataset name (supports short names: 'polygon', 'base', 'ethereum', 'arbitrum', etc.)"),
       timeframe: z
         .enum(["1h", "6h", "24h", "7d", "100", "500", "1000", "5000"])
         .optional()
         .default("100")
         .describe(
-          "Time period or block count: '1h'=~1800 blocks, '6h'=~10800, '24h'=~43200, '7d'=~302400, or exact block count (100, 500, 1000, 5000). Use 100 for unfiltered queries to avoid memory issues.",
+          "Time period or block count. Quick options: '100' (default, ~3 mins), '1h' (~1 hour), '24h' (1 day), '7d' (1 week). Use 100-500 for unfiltered queries to stay fast (<2s).",
         ),
       from_addresses: z
         .array(z.string())
@@ -60,10 +75,8 @@ export function registerGetRecentTransactionsTool(server: McpServer) {
         throw new Error("portal_get_recent_transactions is only for EVM chains");
       }
 
-      // Get latest block
-      const head = await portalFetch<BlockHead>(
-        `${PORTAL_URL}/datasets/${dataset}/head`,
-      );
+      // Get latest block (cached for 30s)
+      const head = await getBlockHead(dataset);
       const latestBlock = head.number;
 
       // Calculate block range based on timeframe

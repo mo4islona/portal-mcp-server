@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PORTAL_URL } from "../../constants/index.js";
-import { resolveDataset } from "../../cache/datasets.js";
+import { resolveDataset, getBlockHead } from "../../cache/datasets.js";
 import { detectChainType } from "../../helpers/chain.js";
 import { portalFetch, portalFetchStream } from "../../helpers/fetch.js";
 import { formatResult } from "../../helpers/format.js";
@@ -57,10 +57,8 @@ export function registerGetContractActivityTool(server: McpServer) {
 
       const normalizedContract = normalizeEvmAddress(contract_address);
 
-      // Get latest block
-      const head = await portalFetch<BlockHead>(
-        `${PORTAL_URL}/datasets/${dataset}/head`,
-      );
+      // Get latest block (cached for 30s)
+      const head = await getBlockHead(dataset);
       const latestBlock = head.number;
 
       // Calculate block range

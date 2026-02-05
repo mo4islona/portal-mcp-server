@@ -24,7 +24,22 @@ import {
 export function registerQueryLogsTool(server: McpServer) {
   server.tool(
     "portal_query_logs",
-    "Query event logs from an EVM dataset with optional related data fetching. Wrapper for Portal API POST /datasets/{dataset}/stream. Target: <1s response for 10k blocks.",
+    `Query event logs (emitted events) from EVM chains. This is THE TOOL for tracking on-chain events.
+
+WHEN TO USE:
+- "Track all USDC transfers" → Filter by USDC address + Transfer event signature
+- "Monitor Uniswap swaps on pool X" → Filter by pool address + Swap event
+- "Get all events from contract Y" → Just filter by address
+- "Find Transfer events with specific recipient" → Use topic1 for indexed parameters
+
+PERFORMANCE: <1s for 10k blocks when filtered. ALWAYS filter by address or topics.
+
+EXAMPLES:
+- ERC20 transfers: { addresses: ["0xUSDC..."], topic0: ["0xddf252ad...Transfer"] }
+- All contract events: { addresses: ["0xContract..."], from_block: X, to_block: Y }
+- Indexed parameter: { topic1: ["0x000...paddedAddress"] } for transfer recipient
+
+SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nft_transfers`,
     {
       dataset: z.string().describe("Dataset name or alias"),
       from_block: z.number().describe("Starting block number"),
@@ -42,14 +57,14 @@ export function registerQueryLogsTool(server: McpServer) {
       addresses: z
         .array(z.string())
         .optional()
-        .describe("Contract addresses to filter"),
+        .describe("Contract addresses to filter (e.g., ['0xUSDC...', '0xDAI...']). IMPORTANT: Always include this or topics for fast queries."),
       topic0: z
         .array(z.string())
         .optional()
-        .describe("Event signatures (topic0)"),
-      topic1: z.array(z.string()).optional().describe("Topic1 filter"),
-      topic2: z.array(z.string()).optional().describe("Topic2 filter"),
-      topic3: z.array(z.string()).optional().describe("Topic3 filter"),
+        .describe("Event signatures (topic0). E.g., Transfer = 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"),
+      topic1: z.array(z.string()).optional().describe("Topic1 filter (often: from address in Transfer, indexed parameter 1)"),
+      topic2: z.array(z.string()).optional().describe("Topic2 filter (often: to address in Transfer, indexed parameter 2)"),
+      topic3: z.array(z.string()).optional().describe("Topic3 filter (indexed parameter 3, chain-specific)"),
       limit: z.number().optional().default(100).describe("Max logs to return (default: 100)"),
       include_transaction: z
         .boolean()

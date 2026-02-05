@@ -25,7 +25,22 @@ import {
 export function registerQueryTransactionsTool(server: McpServer) {
   server.tool(
     "portal_query_transactions",
-    "Query transactions from an EVM dataset with optional related data. Wrapper for Portal API POST /datasets/{dataset}/stream. Target: <500ms response for 5k blocks.",
+    `Query transactions from EVM chains. Use this for tracking wallet activity, contract interactions, or function calls.
+
+WHEN TO USE:
+- "Show all transactions from this wallet"
+- "Find all calls to this contract"
+- "Track transactions by function signature (sighash)"
+- "Get transaction history between two addresses"
+
+PERFORMANCE: <500ms for 5k blocks when filtered. Always filter by address or sighash.
+
+EXAMPLES:
+- Wallet activity: { from_addresses: ["0xWallet..."], from_block: X, to_block: Y }
+- Contract calls: { to_addresses: ["0xContract..."] }
+- Specific function: { to_addresses: ["0xContract..."], sighash: ["0x12345678"] }
+
+SEE ALSO: portal_get_recent_transactions (simpler, auto-calculates blocks)`,
     {
       dataset: z.string().describe("Dataset name or alias"),
       from_block: z.number().describe("Starting block number"),
@@ -40,11 +55,11 @@ export function registerQueryTransactionsTool(server: McpServer) {
         .optional()
         .default(false)
         .describe("Only query finalized blocks"),
-      from_addresses: z.array(z.string()).optional().describe("Sender addresses"),
+      from_addresses: z.array(z.string()).optional().describe("Sender addresses (wallets or contracts that initiated the transaction)"),
       to_addresses: z
         .array(z.string())
         .optional()
-        .describe("Recipient addresses"),
+        .describe("Recipient addresses (typically contracts being called, or wallets receiving ETH)"),
       sighash: z
         .array(z.string())
         .optional()
