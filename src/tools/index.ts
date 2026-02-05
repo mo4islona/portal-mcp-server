@@ -39,7 +39,21 @@ import {
   registerGetTransactionDensityTool,
   registerGetGasAnalyticsTool,
   registerCompareChainsTool,
+  registerGetTopContractsTool,
+  registerGetTopAddressesTool,
+  registerGetTimeSeriesDataTool,
+  registerGetContractDeploymentsTool,
 } from "./convenience/index.js";
+
+// Enrichment tools (external data sources)
+import {
+  registerGetTokenInfoTool,
+  registerGetDefiProtocolTool,
+  registerGetProtocolsByChainTool,
+  registerGetChainTvlTool,
+  registerGetYieldPoolsTool,
+  registerGetProtocolFeesTool,
+} from "./enrichment/index.js";
 
 // ============================================================================
 // Tool Registry
@@ -77,11 +91,23 @@ export function registerAllTools(server: McpServer) {
   registerGetAddressActivityTool(server);
   registerGetTokenTransfersForAddressTool(server);
 
-  // Convenience tools (6) - High-level wrappers for common tasks
+  // Convenience tools (10) - High-level wrappers for common tasks
   registerGetRecentTransactionsTool(server);
   registerGetWalletSummaryTool(server);
   registerGetContractActivityTool(server);
   registerGetTransactionDensityTool(server);
   registerGetGasAnalyticsTool(server);
   registerCompareChainsTool(server);
+  registerGetTopContractsTool(server);
+  registerGetTopAddressesTool(server);
+  registerGetTimeSeriesDataTool(server);
+  registerGetContractDeploymentsTool(server);
+
+  // Enrichment tools (6) - External data sources for rich metadata
+  registerGetTokenInfoTool(server);
+  registerGetDefiProtocolTool(server);
+  registerGetProtocolsByChainTool(server);
+  registerGetChainTvlTool(server);
+  registerGetYieldPoolsTool(server);
+  registerGetProtocolFeesTool(server);
 }
