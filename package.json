@@ -12,15 +12,20 @@
 		"start": "node dist/index.js",
 		"dev": "tsx src/index.ts",
 		"demo": "tsx demo.ts",
-		"inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+		"inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+		"cf:dev": "wrangler dev",
+		"cf:deploy": "wrangler deploy",
+		"cf:tail": "wrangler tail"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.12.0",
 		"zod": "^3.24.0"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20250110.0",
 		"@types/node": "^22.10.0",
 		"tsx": "^4.19.0",
-		"typescript": "^5.7.0"
+		"typescript": "^5.7.0",
+		"wrangler": "^3.99.0"
 	}
 }

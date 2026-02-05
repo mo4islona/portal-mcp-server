@@ -1,0 +1,304 @@
+import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { PORTAL_URL, EVENT_SIGNATURES } from "../../constants/index.js";
+import { validateDataset } from "../../cache/datasets.js";
+import { detectChainType, isL2Chain } from "../../helpers/chain.js";
+import { portalFetch, portalFetchStream } from "../../helpers/fetch.js";
+import { formatResult } from "../../helpers/format.js";
+import {
+  buildEvmTransactionFields,
+  buildEvmLogFields,
+} from "../../helpers/fields.js";
+import { normalizeEvmAddress } from "../../helpers/validation.js";
+import type { BlockHead } from "../../types/index.js";
+
+// ============================================================================
+// Tool: Get Wallet Summary (Convenience Wrapper)
+// ============================================================================
+
+/**
+ * One-call wallet activity summary.
+ * Combines multiple queries into a single comprehensive view:
+ * - Recent transactions sent
+ * - Recent transactions received
+ * - Token transfers (ERC20)
+ * - NFT transfers (ERC721/1155)
+ */
+export function registerGetWalletSummaryTool(server: McpServer) {
+  server.tool(
+    "portal_get_wallet_summary",
+    "Get comprehensive wallet activity in one call. Returns transactions, token transfers, and NFT activity for the specified timeframe. Perfect for wallet dashboards, activity feeds, or quick wallet analysis.",
+    {
+      dataset: z.string().describe("Dataset name or alias"),
+      address: z.string().describe("Wallet address to analyze"),
+      timeframe: z
+        .enum(["1h", "24h", "7d", "1000", "5000"])
+        .optional()
+        .default("1000")
+        .describe(
+          "Look-back period: '1h'=~1800 blocks, '24h'=~43200, '7d'=~302400, or block count",
+        ),
+      include_tokens: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe("Include ERC20 token transfers"),
+      include_nfts: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Include NFT transfers (ERC721/1155)"),
+      limit_per_type: z
+        .number()
+        .optional()
+        .default(50)
+        .describe("Max items per category (txs, tokens, nfts)"),
+    },
+    async ({
+      dataset,
+      address,
+      timeframe,
+      include_tokens,
+      include_nfts,
+      limit_per_type,
+    }) => {
+      const queryStartTime = Date.now();
+      await validateDataset(dataset);
+      const chainType = detectChainType(dataset);
+
+      if (chainType !== "evm") {
+        throw new Error("portal_get_wallet_summary is only for EVM chains");
+      }
+
+      const normalizedAddress = normalizeEvmAddress(address);
+
+      // Get latest block
+      const head = await portalFetch<BlockHead>(
+        `${PORTAL_URL}/datasets/${dataset}/head`,
+      );
+      const latestBlock = head.number;
+
+      // Calculate block range
+      let blockRange: number;
+      switch (timeframe) {
+        case "1h":
+          blockRange = 1800;
+          break;
+        case "24h":
+          blockRange = 43200;
+          break;
+        case "7d":
+          blockRange = 302400;
+          break;
+        default:
+          blockRange = parseInt(timeframe);
+      }
+
+      const fromBlock = Math.max(0, latestBlock - blockRange);
+      const toBlock = latestBlock;
+      const includeL2 = isL2Chain(dataset);
+
+      // Query 1: Transactions
+      const txQuery = {
+        type: "evm",
+        fromBlock,
+        toBlock,
+        fields: {
+          block: { number: true, timestamp: true },
+          transaction: buildEvmTransactionFields(includeL2),
+        },
+        transactions: [
+          { from: [normalizedAddress] },
+          { to: [normalizedAddress] },
+        ],
+      };
+
+      const txResults = await portalFetchStream(
+        `${PORTAL_URL}/datasets/${dataset}/stream`,
+        txQuery,
+      );
+
+      const transactions = txResults
+        .flatMap(
+          (block: unknown) =>
+            (block as { transactions?: unknown[] }).transactions || [],
+        )
+        .slice(0, limit_per_type);
+
+      // Query 2: Token Transfers (if requested)
+      let tokenTransfers: unknown[] = [];
+      if (include_tokens) {
+        const paddedAddress =
+          "0x" + normalizedAddress.slice(2).padStart(64, "0");
+        const tokenQuery = {
+          type: "evm",
+          fromBlock,
+          toBlock,
+          fields: {
+            block: { number: true, timestamp: true },
+            log: buildEvmLogFields(),
+          },
+          logs: [
+            {
+              topic0: [EVENT_SIGNATURES.TRANSFER_ERC20],
+              topic1: [paddedAddress], // from
+            },
+            {
+              topic0: [EVENT_SIGNATURES.TRANSFER_ERC20],
+              topic2: [paddedAddress], // to
+            },
+          ],
+        };
+
+        const tokenResults = await portalFetchStream(
+          `${PORTAL_URL}/datasets/${dataset}/stream`,
+          tokenQuery,
+        );
+
+        tokenTransfers = tokenResults
+          .flatMap((block: unknown) => {
+            const b = block as {
+              header?: { number: number; timestamp: number };
+              logs?: Array<{
+                transactionHash: string;
+                logIndex: number;
+                address: string;
+                topics?: string[];
+                data: string;
+              }>;
+            };
+            return (b.logs || []).map((log) => ({
+              block_number: b.header?.number,
+              timestamp: b.header?.timestamp,
+              transaction_hash: log.transactionHash,
+              log_index: log.logIndex,
+              token_address: log.address,
+              from: "0x" + (log.topics?.[1]?.slice(-40) || ""),
+              to: "0x" + (log.topics?.[2]?.slice(-40) || ""),
+              value: log.data,
+              direction:
+                "0x" + (log.topics?.[1]?.slice(-40) || "") ===
+                normalizedAddress
+                  ? "out"
+                  : "in",
+            }));
+          })
+          .slice(0, limit_per_type);
+      }
+
+      // Query 3: NFT Transfers (if requested)
+      let nftTransfers: unknown[] = [];
+      if (include_nfts) {
+        const paddedAddress =
+          "0x" + normalizedAddress.slice(2).padStart(64, "0");
+        const nftQuery = {
+          type: "evm",
+          fromBlock,
+          toBlock,
+          fields: {
+            block: { number: true, timestamp: true },
+            log: buildEvmLogFields(),
+          },
+          logs: [
+            {
+              topic0: [
+                EVENT_SIGNATURES.TRANSFER_ERC721,
+                EVENT_SIGNATURES.TRANSFER_SINGLE,
+                EVENT_SIGNATURES.TRANSFER_BATCH,
+              ],
+              topic1: [paddedAddress], // from (ERC721)
+            },
+            {
+              topic0: [
+                EVENT_SIGNATURES.TRANSFER_ERC721,
+                EVENT_SIGNATURES.TRANSFER_SINGLE,
+                EVENT_SIGNATURES.TRANSFER_BATCH,
+              ],
+              topic2: [paddedAddress], // to (ERC721) or from (ERC1155)
+            },
+            {
+              topic0: [
+                EVENT_SIGNATURES.TRANSFER_SINGLE,
+                EVENT_SIGNATURES.TRANSFER_BATCH,
+              ],
+              topic3: [paddedAddress], // to (ERC1155)
+            },
+          ],
+        };
+
+        const nftResults = await portalFetchStream(
+          `${PORTAL_URL}/datasets/${dataset}/stream`,
+          nftQuery,
+        );
+
+        nftTransfers = nftResults
+          .flatMap((block: unknown) => {
+            const b = block as {
+              header?: { number: number; timestamp: number };
+              logs?: Array<{
+                transactionHash: string;
+                logIndex: number;
+                address: string;
+                topics?: string[];
+                data: string;
+              }>;
+            };
+            return (b.logs || []).map((log) => ({
+              block_number: b.header?.number,
+              timestamp: b.header?.timestamp,
+              transaction_hash: log.transactionHash,
+              log_index: log.logIndex,
+              contract_address: log.address,
+              token_id: log.topics?.[3],
+              data: log.data,
+            }));
+          })
+          .slice(0, limit_per_type);
+      }
+
+      const summary = {
+        address: normalizedAddress,
+        timeframe: {
+          from_block: fromBlock,
+          to_block: toBlock,
+          description: timeframe,
+        },
+        transactions: {
+          count: transactions.length,
+          sent: (transactions as Array<{ from: string }>).filter(
+            (tx) => tx.from.toLowerCase() === normalizedAddress,
+          ).length,
+          received: (transactions as Array<{ from: string }>).filter(
+            (tx) => tx.from.toLowerCase() !== normalizedAddress,
+          ).length,
+          items: transactions,
+        },
+        token_transfers: include_tokens
+          ? {
+              count: tokenTransfers.length,
+              items: tokenTransfers,
+            }
+          : null,
+        nft_transfers: include_nfts
+          ? {
+              count: nftTransfers.length,
+              items: nftTransfers,
+            }
+          : null,
+      };
+
+      return formatResult(
+        summary,
+        `Wallet summary for ${normalizedAddress}: ${transactions.length} txs, ${tokenTransfers.length} token transfers, ${nftTransfers.length} NFT transfers`,
+        {
+          metadata: {
+            dataset,
+            from_block: fromBlock,
+            to_block: toBlock,
+            query_start_time: queryStartTime,
+          },
+        },
+      );
+    },
+  );
+}

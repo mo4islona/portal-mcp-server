@@ -1,4 +1,69 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Cloudflare Workers
+.wrangler/
+.dev.vars
+wrangler.toml.backup
+
+# Test files (don't commit to main repo)
+test-*.mjs
+test-*.js
+*-test.mjs
+*-test.js
+demo.ts
+export-demo.ts
+
+# Development notes and summaries (keep in local only)
+*_SUMMARY.md
+*_REPORT.md
+*_COMPLETE.md
+*_PLAN.md
+*_STATUS.md
+PHASE*.md
+IMPROVEMENTS*.md
+DEPLOYMENT*.md
+FINAL*.md
+BUG_FIX*.md
+DATA_*.md
+LARGE_*.md
+COMMON_*.md
+EMOJI_*.md
+USER_*.md
+TEST_*.md
+GETTING_STARTED.md
+QUICK_START.md
+DEPLOYED.md
+REFACTORING*.md
+UX_*.md
+TOOL_*.md
+
+# Temporary files
+*.tmp
+*.temp
+.scratch/
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
