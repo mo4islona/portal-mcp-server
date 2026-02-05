@@ -15,7 +15,31 @@ import { normalizeAddresses } from "../../helpers/validation.js";
 export function registerQueryTracesTool(server: McpServer) {
   server.tool(
     "portal_query_traces",
-    "Query internal transactions/traces from an EVM dataset. Wrapper for Portal API POST /datasets/{dataset}/stream. Traces are expensive - use small ranges.",
+    `Query internal transactions/traces from EVM chains. Track contract deployments, internal calls, self-destructs, and block rewards.
+
+WHEN TO USE:
+- "Find contracts deployed by address X" → Use type: ["create"]
+- "Track internal ETH transfers" → Use type: ["call"]
+- "Monitor self-destructs" → Use type: ["suicide"]
+
+IMPORTANT FOR CONTRACT DEPLOYMENTS:
+- type "create" returns BOTH CREATE and CREATE2 deployments
+- Portal API does not distinguish between CREATE and CREATE2 opcodes
+- Both opcodes appear as type "create" in the results
+- To find all deployed contracts, use type: ["create"] and you'll get both
+
+PERFORMANCE: Traces are expensive. RECOMMENDED: <1k blocks per query.
+
+EXAMPLES:
+- All deployments: { type: ["create"], from_block: X, to_block: Y }
+- Deployments by specific deployer: { type: ["create"], create_from: ["0xDeployer..."] }
+- Internal calls to contract: { type: ["call"], call_to: ["0xContract..."] }
+
+CORRECT PARAMETERS BY TYPE:
+- CREATE traces: use create_from (NOT call_from)
+- CALL traces: use call_from and call_to
+- SUICIDE traces: use suicide_refund_address
+- REWARD traces: use reward_author`,
     {
       dataset: z.string().describe("Dataset name or alias"),
       from_block: z.number().describe("Starting block number"),
@@ -33,9 +57,13 @@ export function registerQueryTracesTool(server: McpServer) {
       type: z
         .array(z.enum(["call", "create", "suicide", "reward"]))
         .optional()
-        .describe("Trace types to filter"),
-      call_from: z.array(z.string()).optional().describe("Call from addresses"),
-      call_to: z.array(z.string()).optional().describe("Call to addresses"),
+        .describe("Trace types to filter. NOTE: 'create' includes both CREATE and CREATE2 opcodes (Portal API limitation)"),
+      create_from: z
+        .array(z.string())
+        .optional()
+        .describe("Filter CREATE traces by deployer address (use this for contract deployments, not call_from)"),
+      call_from: z.array(z.string()).optional().describe("Filter CALL traces by caller address"),
+      call_to: z.array(z.string()).optional().describe("Filter CALL traces by recipient address"),
       call_sighash: z
         .array(z.string())
         .optional()
@@ -56,6 +84,7 @@ export function registerQueryTracesTool(server: McpServer) {
       to_block,
       finalized_only,
       type,
+      create_from,
       call_from,
       call_to,
       call_sighash,
@@ -71,6 +100,7 @@ export function registerQueryTracesTool(server: McpServer) {
         throw new Error("portal_query_traces is only for EVM chains");
       }
 
+      const normalizedCreateFrom = normalizeAddresses(create_from, chainType);
       const normalizedCallFrom = normalizeAddresses(call_from, chainType);
       const normalizedCallTo = normalizeAddresses(call_to, chainType);
       const normalizedSuicideRefund = normalizeAddresses(
@@ -87,6 +117,7 @@ export function registerQueryTracesTool(server: McpServer) {
 
       const traceFilter: Record<string, unknown> = {};
       if (type) traceFilter.type = type;
+      if (normalizedCreateFrom) traceFilter.createFrom = normalizedCreateFrom;
       if (normalizedCallFrom) traceFilter.callFrom = normalizedCallFrom;
       if (normalizedCallTo) traceFilter.callTo = normalizedCallTo;
       if (call_sighash) traceFilter.callSighash = call_sighash;
