@@ -43,6 +43,18 @@ export async function getDatasets(): Promise<Dataset[]> {
   });
 }
 
+// Common chain name aliases
+const CHAIN_ALIASES: Record<string, string[]> = {
+  "hyperliquid-mainnet": ["hyperevm", "hyperl", "hyper"],
+  "arbitrum-one": ["arbitrum", "arb"],
+  "optimism-mainnet": ["optimism", "op"],
+  "polygon-mainnet": ["polygon", "matic"],
+  "avalanche-mainnet": ["avalanche", "avax"],
+  "binance-mainnet": ["bsc", "bnb", "binance"],
+  "base-mainnet": ["base"],
+  "ethereum-mainnet": ["ethereum", "eth"],
+};
+
 /**
  * Resolve a dataset name or alias to the canonical dataset name.
  * Supports fuzzy matching for common shortcuts like "polygon" -> "polygon-mainnet"
@@ -60,6 +72,13 @@ export async function resolveDataset(dataset: string): Promise<string> {
 
   // Fuzzy match: prefer mainnet if user provides just the chain name
   const lowerDataset = dataset.toLowerCase();
+
+  // Check common aliases first
+  for (const [canonicalName, aliases] of Object.entries(CHAIN_ALIASES)) {
+    if (aliases.some((a) => a === lowerDataset || lowerDataset.includes(a) || a.includes(lowerDataset))) {
+      return canonicalName;
+    }
+  }
 
   // Try "{name}-mainnet" first
   const mainnetMatch = datasets.find(
