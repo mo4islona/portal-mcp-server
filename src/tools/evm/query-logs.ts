@@ -65,7 +65,7 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
       topic1: z.array(z.string()).optional().describe("Topic1 filter (often: from address in Transfer, indexed parameter 1)"),
       topic2: z.array(z.string()).optional().describe("Topic2 filter (often: to address in Transfer, indexed parameter 2)"),
       topic3: z.array(z.string()).optional().describe("Topic3 filter (indexed parameter 3, chain-specific)"),
-      limit: z.number().optional().default(100).describe("Max logs to return (default: 100)"),
+      limit: z.number().max(1000).optional().default(100).describe("Max logs to return (default: 100, max: 1000)"),
       include_transaction: z
         .boolean()
         .optional()

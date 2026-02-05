@@ -62,9 +62,10 @@ SEE ALSO: portal_query_transactions (more filters), portal_get_wallet_summary (i
         .describe("Filter by recipient addresses"),
       limit: z
         .number()
+        .max(1000)
         .optional()
         .default(100)
-        .describe("Max transactions to return"),
+        .describe("Max transactions to return (max: 1000). For larger datasets, use portal_paginate_query"),
     },
     async ({ dataset, timeframe, from_addresses, to_addresses, limit }) => {
       const queryStartTime = Date.now();

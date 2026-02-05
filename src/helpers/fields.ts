@@ -23,6 +23,7 @@ export function buildEvmBlockFields(includeL2: boolean = false) {
     difficulty: true,
     totalDifficulty: true,
     baseFeePerGas: true,
+    transactionCount: true, // Number of transactions in the block
   };
 
   if (includeL2) {

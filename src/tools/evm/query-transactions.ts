@@ -66,7 +66,7 @@ SEE ALSO: portal_get_recent_transactions (simpler, auto-calculates blocks)`,
         .describe("Function sighash filter (4-byte hex)"),
       first_nonce: z.number().optional().describe("Minimum nonce"),
       last_nonce: z.number().optional().describe("Maximum nonce"),
-      limit: z.number().optional().default(100).describe("Max transactions (default: 100)"),
+      limit: z.number().max(1000).optional().default(100).describe("Max transactions (default: 100, max: 1000)"),
       include_logs: z
         .boolean()
         .optional()

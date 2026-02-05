@@ -17,6 +17,7 @@ export function registerStreamTool(server: McpServer) {
       dataset: z.string().describe("Dataset name or alias"),
       query: z
         .object({
+          type: z.enum(["evm", "solana"]).describe("REQUIRED: Chain type (evm or solana)"),
           fromBlock: z.number(),
           toBlock: z.number().optional(),
           fields: z.record(z.unknown()).optional(),
@@ -30,7 +31,7 @@ export function registerStreamTool(server: McpServer) {
           tokenBalances: z.array(z.record(z.unknown())).optional(),
           rewards: z.array(z.record(z.unknown())).optional(),
         })
-        .describe("Raw query object"),
+        .describe("Raw query object (must include 'type': 'evm' or 'solana')"),
       timeout_ms: z
         .number()
         .optional()
