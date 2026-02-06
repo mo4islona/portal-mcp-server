@@ -186,7 +186,7 @@ export function registerDecodeLogsTool(server: McpServer) {
         .optional()
         .default(["all"])
         .describe("Event types to decode"),
-      limit: z.number().optional().default(100).describe("Max logs to return"),
+      limit: z.number().optional().default(20).describe("Max logs to return (default: 20). Note: Lower default for MCP to reduce context usage."),
       finalized_only: z
         .boolean()
         .optional()

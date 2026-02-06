@@ -24,7 +24,7 @@ export function registerQueryBlocksTool(server: McpServer) {
         .optional()
         .default(false)
         .describe("Only query finalized blocks"),
-      limit: z.number().optional().default(100).describe("Max blocks to return"),
+      limit: z.number().optional().default(20).describe("Max blocks to return (default: 20). Note: Lower default for MCP to reduce context usage."),
       include_l2_fields: z
         .boolean()
         .optional()

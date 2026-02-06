@@ -35,7 +35,7 @@ export function registerGetTokenTransfersForAddressTool(server: McpServer) {
         .optional()
         .default("all")
         .describe("Token standard to filter"),
-      limit: z.number().optional().default(100).describe("Max transfers"),
+      limit: z.number().optional().default(20).describe("Max transfers (default: 20). Note: Lower default for MCP to reduce context usage."),
       finalized_only: z
         .boolean()
         .optional()
