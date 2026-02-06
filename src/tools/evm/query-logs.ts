@@ -16,6 +16,9 @@ import {
   formatBlockRangeWarning,
   getQueryExamples,
 } from "../../helpers/validation.js";
+import { getLogFields } from "../../helpers/field-presets.js";
+import { applyResponseFormat, type ResponseFormat } from "../../helpers/response-modes.js";
+import { resolveTimeframeOrBlocks } from "../../helpers/timeframe.js";
 
 // ============================================================================
 // Tool: Query Logs (EVM)
@@ -42,7 +45,11 @@ EXAMPLES:
 SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nft_transfers`,
     {
       dataset: z.string().describe("Dataset name or alias"),
-      from_block: z.number().describe("Starting block number"),
+      timeframe: z
+        .string()
+        .optional()
+        .describe("Time range (e.g., '24h', '7d'). Alternative to from_block/to_block. Supported: 1h, 6h, 12h, 24h, 3d, 7d, 14d, 30d"),
+      from_block: z.number().optional().describe("Starting block number (use this OR timeframe)"),
       to_block: z
         .number()
         .optional()
@@ -66,6 +73,20 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
       topic2: z.array(z.string()).optional().describe("Topic2 filter (often: to address in Transfer, indexed parameter 2)"),
       topic3: z.array(z.string()).optional().describe("Topic3 filter (indexed parameter 3, chain-specific)"),
       limit: z.number().max(1000).optional().default(20).describe("Max logs to return (default: 20, max: 1000). Note: Lower default for MCP to reduce context usage."),
+      field_preset: z
+        .enum(["minimal", "standard", "full"])
+        .optional()
+        .default("standard")
+        .describe(
+          "Field preset: 'minimal' (address+topic0+block, ~80% smaller), 'standard' (all topics+timestamp), 'full' (includes raw data hex, largest). Use 'minimal' to reduce context usage."
+        ),
+      response_format: z
+        .enum(["full", "compact", "summary"])
+        .optional()
+        .default("full")
+        .describe(
+          "Response format: 'summary' (~95% smaller, aggregated stats only), 'compact' (~70% smaller, strips verbose fields), 'full' (complete data). Use 'summary' for counting/categorizing."
+        ),
       include_transaction: z
         .boolean()
         .optional()
@@ -84,6 +105,7 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
     },
     async ({
       dataset,
+      timeframe,
       from_block,
       to_block,
       finalized_only,
@@ -93,6 +115,8 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
       topic2,
       topic3,
       limit,
+      field_preset,
+      response_format,
       include_transaction,
       include_transaction_traces,
       include_transaction_logs,
@@ -105,17 +129,26 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
         throw new Error("portal_query_logs is only for EVM chains");
       }
 
+      // Resolve timeframe or use explicit blocks
+      const { from_block: resolvedFromBlock, to_block: resolvedToBlock } =
+        await resolveTimeframeOrBlocks({
+          dataset,
+          timeframe,
+          from_block,
+          to_block,
+        });
+
       const normalizedAddresses = normalizeAddresses(addresses, chainType);
       const { validatedToBlock: endBlock } = await validateBlockRange(
         dataset,
-        from_block,
-        to_block ?? Number.MAX_SAFE_INTEGER,
+        resolvedFromBlock,
+        resolvedToBlock ?? Number.MAX_SAFE_INTEGER,
         finalized_only,
       );
       const includeL2 = isL2Chain(dataset);
 
       // Validate query size to prevent crashes
-      const blockRange = endBlock - from_block;
+      const blockRange = endBlock - resolvedFromBlock;
       const hasFilters = !!(normalizedAddresses || topic0 || topic1 || topic2 || topic3);
 
       const validation = validateQuerySize({
@@ -134,7 +167,7 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
       // Warn about potentially slow queries
       if (validation.warning) {
         console.error(
-          formatBlockRangeWarning(from_block, endBlock, "logs", hasFilters),
+          formatBlockRangeWarning(resolvedFromBlock, endBlock, "logs", hasFilters),
         );
       }
 
@@ -148,10 +181,11 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
       if (include_transaction_traces) logFilter.transactionTraces = true;
       if (include_transaction_logs) logFilter.transactionLogs = true;
 
-      const fields: Record<string, unknown> = {
-        block: { number: true, timestamp: true, hash: true },
-        log: buildEvmLogFields(),
-      };
+      // Use field preset to control response size
+      const presetFields = getLogFields(field_preset || "standard");
+      const fields: Record<string, unknown> = { ...presetFields };
+
+      // Add transaction/trace fields if requested
       if (
         include_transaction ||
         include_transaction_traces ||
@@ -165,7 +199,7 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
 
       const query = {
         type: "evm",
-        fromBlock: from_block,
+        fromBlock: resolvedFromBlock,
         toBlock: endBlock,
         fields,
         logs: [logFilter],
@@ -183,15 +217,27 @@ SEE ALSO: portal_get_erc20_transfers (easier for token transfers), portal_get_nf
       // Apply limit after collecting all results
       const limitedLogs = allLogs.slice(0, limit);
 
-      return formatResult(
+      // Apply response format (summary/compact/full)
+      const formattedData = applyResponseFormat(
         limitedLogs,
-        `Retrieved ${limitedLogs.length} logs${allLogs.length > limit ? ` (total found: ${allLogs.length})` : ""}`,
+        response_format || "full",
+        "logs"
+      );
+
+      const message =
+        response_format === "summary"
+          ? `Log summary for ${limitedLogs.length} logs`
+          : `Retrieved ${limitedLogs.length} logs${allLogs.length > limit ? ` (total found: ${allLogs.length})` : ""}`;
+
+      return formatResult(
+        formattedData,
+        message,
         {
           maxItems: limit,
           warnOnTruncation: false,
           metadata: {
             dataset,
-            from_block,
+            from_block: resolvedFromBlock,
             to_block: endBlock,
             query_start_time: queryStartTime,
           },

@@ -22,6 +22,8 @@ export interface ResponseMetadata {
   response_time_ms?: number;
   total_found?: number;
   returned?: number;
+  has_more?: boolean;
+  estimated_total?: number;
 }
 
 /**
@@ -110,6 +112,14 @@ export function formatResult(
     if (Array.isArray(dataToFormat)) {
       meta.total_found = originalCount || dataToFormat.length;
       meta.returned = dataToFormat.length;
+
+      // Indicate if there are more results (when truncated or hit limit)
+      if (truncated || (maxItems && dataToFormat.length >= maxItems)) {
+        meta.has_more = true;
+        if (originalCount > 0) {
+          meta.estimated_total = originalCount;
+        }
+      }
     }
 
     // Wrap data with metadata

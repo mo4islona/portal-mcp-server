@@ -7,26 +7,25 @@
 // - CoinGecko: Token metadata, prices, logos
 //
 
+import { createCache } from "./cache-manager.js";
+
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-const cache = new Map<string, CacheEntry<unknown>>();
+// Managed cache with automatic cleanup to prevent memory leaks
+// Max 500 entries for external API data (token lists can be large)
+const cache = createCache<unknown>(CACHE_TTL, 500);
 
 /**
  * Simple cache wrapper for external API calls
  */
 function withCache<T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> {
   const cached = cache.get(key);
-  if (cached && Date.now() - cached.timestamp < ttl) {
-    return Promise.resolve(cached.data as T);
+  if (cached) {
+    return Promise.resolve(cached as T);
   }
 
   return fn().then((data) => {
-    cache.set(key, { data, timestamp: Date.now() });
+    cache.set(key, data);
     return data;
   });
 }

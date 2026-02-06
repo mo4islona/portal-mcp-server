@@ -17,6 +17,8 @@ import {
   formatBlockRangeWarning,
   getQueryExamples,
 } from "../../helpers/validation.js";
+import { getTransactionFields } from "../../helpers/field-presets.js";
+import { applyResponseFormat, type ResponseFormat } from "../../helpers/response-modes.js";
 
 // ============================================================================
 // Tool: Query Transactions (EVM)
@@ -67,6 +69,20 @@ SEE ALSO: portal_get_recent_transactions (simpler, auto-calculates blocks)`,
       first_nonce: z.number().optional().describe("Minimum nonce"),
       last_nonce: z.number().optional().describe("Maximum nonce"),
       limit: z.number().max(1000).optional().default(20).describe("Max transactions (default: 20, max: 1000). Note: Lower default for MCP to reduce context usage."),
+      field_preset: z
+        .enum(["minimal", "standard", "full"])
+        .optional()
+        .default("standard")
+        .describe(
+          "Field preset: 'minimal' (from/to/value+block, ~70% smaller), 'standard' (hash+gas+timestamp), 'full' (includes input data hex, largest). Use 'minimal' to reduce context usage."
+        ),
+      response_format: z
+        .enum(["full", "compact", "summary"])
+        .optional()
+        .default("full")
+        .describe(
+          "Response format: 'summary' (~90% smaller, aggregated stats), 'compact' (~60% smaller, strips input/nonce), 'full' (complete data). Use 'summary' for counting/profiling."
+        ),
       include_logs: z
         .boolean()
         .optional()
@@ -104,6 +120,8 @@ SEE ALSO: portal_get_recent_transactions (simpler, auto-calculates blocks)`,
       first_nonce,
       last_nonce,
       limit,
+      field_preset,
+      response_format,
       include_logs,
       include_traces,
       include_state_diffs,
@@ -167,10 +185,13 @@ SEE ALSO: portal_get_recent_transactions (simpler, auto-calculates blocks)`,
       if (include_traces) txFilter.traces = true;
       if (include_state_diffs) txFilter.stateDiffs = true;
 
-      const fields: Record<string, unknown> = {
-        block: { number: true, timestamp: true, hash: true },
-        transaction: buildEvmTransactionFields(includeL2, include_receipt),
-      };
+      // Use field preset to control response size
+      const presetFields = getTransactionFields(field_preset || "standard");
+      const fields: Record<string, unknown> = { ...presetFields };
+
+      // Override with full transaction fields if L2 or receipt requested
+      fields.transaction = buildEvmTransactionFields(includeL2, include_receipt);
+
       if (include_logs) {
         fields.log = buildEvmLogFields();
       }
@@ -202,9 +223,21 @@ SEE ALSO: portal_get_recent_transactions (simpler, auto-calculates blocks)`,
       // Apply limit after collecting all results
       const limitedTxs = allTxs.slice(0, limit);
 
-      return formatResult(
+      // Apply response format (summary/compact/full)
+      const formattedData = applyResponseFormat(
         limitedTxs,
-        `Retrieved ${limitedTxs.length} transactions${allTxs.length > limit ? ` (total found: ${allTxs.length})` : ""}`,
+        response_format || "full",
+        "transactions"
+      );
+
+      const message =
+        response_format === "summary"
+          ? `Transaction summary for ${limitedTxs.length} transactions`
+          : `Retrieved ${limitedTxs.length} transactions${allTxs.length > limit ? ` (total found: ${allTxs.length})` : ""}`;
+
+      return formatResult(
+        formattedData,
+        message,
         {
           maxItems: limit,
           warnOnTruncation: false,

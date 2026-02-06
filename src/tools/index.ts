@@ -30,6 +30,7 @@ import { registerBatchQueryTool } from "./utilities/batch-query.js";
 import { registerDecodeLogsTool } from "./utilities/decode-logs.js";
 import { registerGetAddressActivityTool } from "./utilities/address-activity.js";
 import { registerGetTokenTransfersForAddressTool } from "./utilities/token-transfers-for-address.js";
+import { registerResolveAddressesTool } from "./utilities/resolve-addresses.js";
 
 // Convenience tools
 import {
@@ -56,6 +57,12 @@ import {
   registerGetSqdNetworkInfoTool,
   registerGetPortalCapabilitiesTool,
 } from "./enrichment/index.js";
+
+// Aggregation tools (high-level analytics)
+import {
+  registerCountEventsTool,
+  registerAggregateTransfersTool,
+} from "./aggregation/index.js";
 
 // ============================================================================
 // Tool Registry
@@ -85,13 +92,14 @@ export function registerAllTools(server: McpServer) {
   registerQuerySolanaLogsTool(server);
   registerQuerySolanaRewardsTool(server);
 
-  // Utility tools (6)
+  // Utility tools (7)
   registerStreamTool(server);
   registerQueryPaginatedTool(server);
   registerBatchQueryTool(server);
   registerDecodeLogsTool(server);
   registerGetAddressActivityTool(server);
   registerGetTokenTransfersForAddressTool(server);
+  registerResolveAddressesTool(server);
 
   // Convenience tools (10) - High-level wrappers for common tasks
   registerGetRecentTransactionsTool(server);
@@ -114,4 +122,8 @@ export function registerAllTools(server: McpServer) {
   registerGetProtocolFeesTool(server);
   registerGetSqdNetworkInfoTool(server);
   registerGetPortalCapabilitiesTool(server);
+
+  // Aggregation tools (2) - Pre-aggregated endpoints for tiny payloads
+  registerCountEventsTool(server);
+  registerAggregateTransfersTool(server);
 }

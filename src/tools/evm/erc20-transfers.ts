@@ -9,6 +9,7 @@ import { formatResult } from "../../helpers/format.js";
 import { buildEvmLogFields } from "../../helpers/fields.js";
 import { normalizeAddresses, normalizeEvmAddress } from "../../helpers/validation.js";
 import { getKnownTokenDecimals, formatTokenValue } from "../../helpers/conversions.js";
+import { getCoinGeckoTokenList } from "../../helpers/external-apis.js";
 
 // ============================================================================
 // Tool: Get ERC20 Transfers
@@ -52,6 +53,11 @@ SEE ALSO: portal_query_logs (more flexible), portal_get_wallet_summary (includes
         .optional()
         .describe("Recipient addresses"),
       limit: z.number().optional().default(1000).describe("Max transfers"),
+      include_token_info: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Include token metadata (symbol, decimals) inline. Avoids separate portal_get_token_info calls."),
     },
     async ({
       dataset,
@@ -61,6 +67,7 @@ SEE ALSO: portal_query_logs (more flexible), portal_get_wallet_summary (includes
       from_addresses,
       to_addresses,
       limit,
+      include_token_info,
     }) => {
       const queryStartTime = Date.now();
       dataset = await resolveDataset(dataset);
@@ -142,8 +149,47 @@ SEE ALSO: portal_query_logs (more flexible), portal_get_wallet_summary (includes
 
       const limitedTransfers = allTransfers.slice(0, limit);
 
+      // Optionally enrich with token metadata
+      let enrichedTransfers = limitedTransfers;
+      if (include_token_info) {
+        try {
+          // Map dataset to chain for CoinGecko
+          const chainMap: Record<string, string> = {
+            "base-mainnet": "base",
+            "ethereum-mainnet": "ethereum",
+            "arbitrum-one": "arbitrum",
+            "optimism-mainnet": "optimism",
+            "polygon-mainnet": "polygon",
+            "avalanche-mainnet": "avalanche",
+            "bsc-mainnet": "bsc",
+          };
+          const chain = chainMap[dataset] || dataset.split("-")[0];
+
+          const tokenList = await getCoinGeckoTokenList(chain);
+          const tokenMap = new Map(
+            tokenList.map((t) => [t.address.toLowerCase(), t])
+          );
+
+          enrichedTransfers = limitedTransfers.map((transfer: any) => {
+            const tokenInfo = tokenMap.get(transfer.token_address.toLowerCase());
+            if (tokenInfo) {
+              return {
+                ...transfer,
+                token_symbol: tokenInfo.symbol,
+                token_name: tokenInfo.name,
+                token_decimals: tokenInfo.decimals,
+              };
+            }
+            return transfer;
+          });
+        } catch (error) {
+          // If token info fetch fails, continue without it
+          console.error("Failed to fetch token info:", error);
+        }
+      }
+
       return formatResult(
-        limitedTransfers,
+        enrichedTransfers,
         `Retrieved ${limitedTransfers.length} ERC20 transfers${allTransfers.length > limit ? ` (total found: ${allTransfers.length})` : ""}`,
         {
           maxItems: limit,

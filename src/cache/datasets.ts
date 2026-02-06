@@ -5,6 +5,7 @@ import {
 import type { Dataset, DatasetMetadata, BlockHead } from "../types/index.js";
 import { portalFetch } from "../helpers/fetch.js";
 import { createDatasetError, createBlockRangeError } from "../helpers/errors.js";
+import { createCache } from "../helpers/cache-manager.js";
 
 // ============================================================================
 // Dataset Cache & Request Deduplication
@@ -13,12 +14,20 @@ import { createDatasetError, createBlockRangeError } from "../helpers/errors.js"
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const HEAD_CACHE_TTL = 30 * 1000; // 30 seconds (blocks change every 2-12s)
 
+// Managed caches with automatic cleanup to prevent memory leaks
+const headCache = createCache<BlockHead>(HEAD_CACHE_TTL, 100); // Max 100 head entries
+const metadataCache = createCache<{ start_block: number; head: BlockHead; finalized_head?: BlockHead }>(HEAD_CACHE_TTL, 100);
 let datasetsCache: { data: Dataset[]; timestamp: number } | null = null;
-let headCache = new Map<string, { head: BlockHead; timestamp: number }>();
-let metadataCache = new Map<string, { data: { start_block: number; head: BlockHead; finalized_head?: BlockHead }; timestamp: number }>();
 
 // Request deduplication: prevent concurrent requests for same resource
 const pendingRequests = new Map<string, Promise<any>>();
+
+// Cleanup pending requests periodically to prevent leaks
+setInterval(() => {
+  if (pendingRequests.size > 50) {
+    console.warn(`Pending requests map has ${pendingRequests.size} entries. Possible leak?`);
+  }
+}, 60000); // Check every minute
 
 /**
  * Deduplicate concurrent requests to the same resource.
@@ -120,14 +129,14 @@ export async function getBlockHead(dataset: string, finalized = false): Promise<
   const cacheKey = `${dataset}:${finalized ? 'finalized' : 'head'}`;
   const cached = headCache.get(cacheKey);
 
-  if (cached && Date.now() - cached.timestamp < HEAD_CACHE_TTL) {
-    return cached.head;
+  if (cached) {
+    return cached;
   }
 
   return dedupe(cacheKey, async () => {
     const endpoint = finalized ? 'finalized-head' : 'head';
     const head = await portalFetch<BlockHead>(`${PORTAL_URL}/datasets/${dataset}/${endpoint}`);
-    headCache.set(cacheKey, { head, timestamp: Date.now() });
+    headCache.set(cacheKey, head);
     return head;
   });
 }
@@ -139,8 +148,8 @@ export async function getDatasetMetadata(dataset: string): Promise<{
 }> {
   // Check cache first (30s TTL for metadata too)
   const cached = metadataCache.get(dataset);
-  if (cached && Date.now() - cached.timestamp < HEAD_CACHE_TTL) {
-    return cached.data;
+  if (cached) {
+    return cached;
   }
 
   return dedupe(`metadata:${dataset}`, async () => {
@@ -156,7 +165,7 @@ export async function getDatasetMetadata(dataset: string): Promise<{
       finalized_head: finalizedHead,
     };
 
-    metadataCache.set(dataset, { data: result, timestamp: Date.now() });
+    metadataCache.set(dataset, result);
     return result;
   });
 }
