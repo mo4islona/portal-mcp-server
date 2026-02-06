@@ -36,8 +36,11 @@ export class ManagedCache<T> {
       cleanupInterval: options.cleanupInterval || 60000, // 60s default
     };
 
-    // Start periodic cleanup
-    this.startCleanup();
+    // Start periodic cleanup (only in Node.js, not in Workers global scope)
+    // Workers will rely on lazy cleanup during get/set operations
+    if (typeof process !== 'undefined' && process.versions?.node) {
+      this.startCleanup();
+    }
   }
 
   get(key: string): T | undefined {
@@ -72,6 +75,7 @@ export class ManagedCache<T> {
       this.totalSize += size;
     }
 
+    // Lazy cleanup on set (for Workers compatibility)
     // Check if we need emergency cleanup
     if (this.cache.size > this.options.maxEntries * 1.5) {
       console.warn(`Cache size exceeded 150% of max (${this.cache.size} > ${this.options.maxEntries}). Running emergency cleanup.`);

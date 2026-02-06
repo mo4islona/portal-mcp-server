@@ -22,12 +22,14 @@ let datasetsCache: { data: Dataset[]; timestamp: number } | null = null;
 // Request deduplication: prevent concurrent requests for same resource
 const pendingRequests = new Map<string, Promise<any>>();
 
-// Cleanup pending requests periodically to prevent leaks
-setInterval(() => {
-  if (pendingRequests.size > 50) {
-    console.warn(`Pending requests map has ${pendingRequests.size} entries. Possible leak?`);
-  }
-}, 60000); // Check every minute
+// Cleanup pending requests periodically to prevent leaks (Node.js only)
+if (typeof process !== 'undefined' && process.versions?.node) {
+  setInterval(() => {
+    if (pendingRequests.size > 50) {
+      console.warn(`Pending requests map has ${pendingRequests.size} entries. Possible leak?`);
+    }
+  }, 60000); // Check every minute
+}
 
 /**
  * Deduplicate concurrent requests to the same resource.
